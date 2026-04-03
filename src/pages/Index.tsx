@@ -9,7 +9,7 @@ import { ConditionList } from "@/components/ConditionList";
 const Index = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-
+  const [searchQuery, setSearchQuery] = useState("");
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!session) {
