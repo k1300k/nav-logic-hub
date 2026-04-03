@@ -42,9 +42,9 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <DashboardHeader />
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        <RouteSchematic />
+        <RouteSchematic searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <StatCards />
-        <ConditionList />
+        <ConditionList searchQuery={searchQuery} />
       </main>
     </div>
   );
