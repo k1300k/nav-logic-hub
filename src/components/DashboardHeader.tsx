@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { Columns2, Settings2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Columns2, LogOut, Settings2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const tabs = [
   { id: "all", label: "ALL", sublabel: "전체" },
@@ -10,6 +13,13 @@ const tabs = [
 
 export function DashboardHeader() {
   const [activeTab, setActiveTab] = useState("all");
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success("로그아웃 되었습니다.");
+    navigate("/auth", { replace: true });
+  };
 
   return (
     <header className="border-b border-border bg-card">
@@ -22,8 +32,12 @@ export function DashboardHeader() {
           <button className="p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors">
             <Columns2 size={18} />
           </button>
-          <button className="p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors">
-            <Settings2 size={18} />
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+            title="로그아웃"
+          >
+            <LogOut size={18} />
           </button>
         </div>
       </div>
