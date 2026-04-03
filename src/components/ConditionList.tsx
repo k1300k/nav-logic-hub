@@ -85,7 +85,7 @@ export function ConditionList({ searchQuery }: ConditionListProps) {
         표출 조건 케이스 — {filtered.length}건
       </h2>
       <div className="space-y-3">
-        {conditions.map((c) => (
+        {filtered.map((c) => (
           <div
             key={c.title}
             className="rounded-lg border border-border bg-card p-4 flex items-start gap-3 hover:shadow-sm transition-shadow cursor-pointer group"
