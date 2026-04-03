@@ -13,6 +13,13 @@ const tabs = [
 
 export function DashboardHeader() {
   const [activeTab, setActiveTab] = useState("all");
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success("로그아웃 되었습니다.");
+    navigate("/auth", { replace: true });
+  };
 
   return (
     <header className="border-b border-border bg-card">
