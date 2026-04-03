@@ -62,14 +62,30 @@ const conditions: Condition[] = [
   },
 ];
 
-export function ConditionList() {
+interface ConditionListProps {
+  searchQuery: string;
+}
+
+export function ConditionList({ searchQuery }: ConditionListProps) {
+  const filtered = conditions.filter((c) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      c.title.toLowerCase().includes(q) ||
+      c.subtitle.includes(q) ||
+      c.formula.toLowerCase().includes(q) ||
+      c.tag.includes(q) ||
+      c.regions.some((r) => r.toLowerCase().includes(q))
+    );
+  });
+
   return (
     <div>
       <h2 className="text-sm font-semibold text-foreground mb-3">
-        표출 조건 케이스 — {conditions.length}건
+        표출 조건 케이스 — {filtered.length}건
       </h2>
       <div className="space-y-3">
-        {conditions.map((c) => (
+        {filtered.map((c) => (
           <div
             key={c.title}
             className="rounded-lg border border-border bg-card p-4 flex items-start gap-3 hover:shadow-sm transition-shadow cursor-pointer group"

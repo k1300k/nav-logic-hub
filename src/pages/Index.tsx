@@ -9,7 +9,7 @@ import { ConditionList } from "@/components/ConditionList";
 const Index = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-
+  const [searchQuery, setSearchQuery] = useState("");
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!session) {
@@ -42,9 +42,9 @@ const Index = () => {
     <div className="min-h-screen bg-background">
       <DashboardHeader />
       <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        <RouteSchematic />
+        <RouteSchematic searchQuery={searchQuery} onSearchChange={setSearchQuery} />
         <StatCards />
-        <ConditionList />
+        <ConditionList searchQuery={searchQuery} />
       </main>
     </div>
   );
