@@ -1,4 +1,12 @@
-export function RouteSchematic() {
+import { Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
+
+interface RouteSchematicProps {
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+}
+
+export function RouteSchematic({ searchQuery, onSearchChange }: RouteSchematicProps) {
   return (
     <div className="rounded-lg border border-border bg-card">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -10,6 +18,18 @@ export function RouteSchematic() {
           ROUTE SCHEMATIC
         </div>
         <span className="text-xs text-muted-foreground">전체 현황</span>
+      </div>
+      {/* 키워드 검색 */}
+      <div className="px-4 pt-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="비교경로 사양내역 키워드 검색..."
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="pl-9 h-9 text-sm"
+          />
+        </div>
       </div>
       <div className="relative h-48 bg-route-bg mx-4 my-3 rounded-lg overflow-hidden">
         <svg viewBox="0 0 600 200" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
