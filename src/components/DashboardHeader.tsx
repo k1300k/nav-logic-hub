@@ -32,8 +32,12 @@ export function DashboardHeader() {
           <button className="p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors">
             <Columns2 size={18} />
           </button>
-          <button className="p-2 rounded-md hover:bg-secondary text-muted-foreground transition-colors">
-            <Settings2 size={18} />
+          <button
+            onClick={handleLogout}
+            className="p-2 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+            title="로그아웃"
+          >
+            <LogOut size={18} />
           </button>
         </div>
       </div>
