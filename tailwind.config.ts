@@ -48,6 +48,7 @@ export default {
           foreground: "hsl(var(--card-foreground))",
         },
         "dot-dom": "hsl(var(--dot-dom))",
+        "badge-draft": { DEFAULT: "hsl(var(--badge-draft))", foreground: "hsl(var(--badge-draft-foreground))" },
         "dot-nas": "hsl(var(--dot-nas))",
         "dot-eu": "hsl(var(--dot-eu))",
         "route-current": "hsl(var(--route-current))",
