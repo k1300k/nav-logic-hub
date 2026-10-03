@@ -1,73 +1,73 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Maximize2, Pencil, RefreshCw, ChevronLeft, ChevronRight, Languages, Loader2, AlertCircle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 type Mode = "auto" | "simple" | "comic";
 type Lang = "en" | "ja" | "zh" | "none";
-type Phase = "idle" | "analyzing" | "confirm" | "drawing" | "done" | "error";
+type Phase = "idle" | "analyzing" | "confirm" | "drawing" | "done" | "error" | "limit";
 
-interface Sample {
-  key: string;
-  intent: string;
-  emoji: string[];
-  comic: { emoji: string; caption: string }[];
-  tr: Record<Exclude<Lang, "none">, string>;
-  ambiguous?: { question: string; options: string[] };
+interface Panel { icons: string[]; label: string; caption: string }
+interface Item {
+  source_sentence_ids: string[]; original_text: string; interpreted_text: string; intent_type: string;
+  negation: boolean; time_expression: string; quantity: string; location_expression: string;
+  needs_clarification: boolean; clarification_question: string; clarification_options: string[];
+  recommended_mode: "simple" | "comic"; visual_plan: Panel[]; translation: string; warnings: string[];
 }
+interface Analysis { request_id: string; original_text: string; sentences: { id: string; text: string }[]; items: Item[] }
+interface Result { id: string; item: Item; mode: "simple" | "comic"; intent: string }
 
-const SAMPLES: Sample[] = [
-  { key: "지금 몇 시인가요?", intent: "현재 시각을 묻고 있어요", emoji: ["🙋", "❓", "🕒"],
-    comic: [{ emoji: "🙋", caption: "말을 건다" }, { emoji: "⌚", caption: "시계가 없다" }, { emoji: "❓", caption: "몇 시인지 묻는다" }, { emoji: "🕒", caption: "시간을 알려준다" }],
-    tr: { en: "What time is it now?", ja: "今何時ですか？", zh: "现在几点？" } },
-  { key: "화장실은 어디인가요?", intent: "화장실 위치를 묻고 있어요", emoji: ["🚻", "❓", "👉"],
-    comic: [{ emoji: "🙋", caption: "도움을 청한다" }, { emoji: "🚻", caption: "화장실을 찾는다" }, { emoji: "🗺️", caption: "위치를 묻는다" }, { emoji: "👉", caption: "방향을 안내받는다" }],
-    tr: { en: "Where is the restroom?", ja: "トイレはどこですか？", zh: "洗手间在哪里？" } },
-  { key: "이 음식에 땅콩을 넣지 말아 주세요.", intent: "음식에서 땅콩을 빼 달라는 요청이에요", emoji: ["🍽️", "🥜", "🚫"],
-    comic: [{ emoji: "🍽️", caption: "음식을 주문한다" }, { emoji: "🥜", caption: "땅콩이 들어간다" }, { emoji: "🚫", caption: "땅콩은 안 된다" }, { emoji: "🙏", caption: "빼 달라고 부탁한다" }],
-    tr: { en: "Please don't put peanuts in this food.", ja: "この料理にピーナッツを入れないでください。", zh: "请不要在这道菜里放花生。" } },
-  { key: "이 호텔로 가고 싶어요.", intent: "특정 호텔로 이동하고 싶다는 요청이에요", emoji: ["🚕", "➡️", "🏨"],
-    comic: [{ emoji: "🙋", caption: "기사님께 말한다" }, { emoji: "📱", caption: "호텔을 보여준다" }, { emoji: "🚕", caption: "택시로 이동한다" }, { emoji: "🏨", caption: "호텔에 도착한다" }],
-    tr: { en: "I'd like to go to this hotel.", ja: "このホテルに行きたいです。", zh: "我想去这家酒店。" },
-    ambiguous: { question: "'이 호텔'은 어떻게 보여줄까요?", options: ["휴대폰 화면의 호텔", "손에 든 주소 메모"] } },
-  { key: "가방을 잃어버렸어요. 찾아주실 수 있나요?", intent: "가방을 잃어버려 찾는 도움을 요청해요", emoji: ["👜", "❓", "🔍"],
-    comic: [{ emoji: "👜", caption: "가방을 들고 있었다" }, { emoji: "😟", caption: "가방이 없어졌다" }, { emoji: "🙋", caption: "도움을 청한다" }, { emoji: "🔍", caption: "함께 찾아 달라" }],
-    tr: { en: "I lost my bag. Could you help me find it?", ja: "かばんをなくしました。探していただけますか？", zh: "我的包丢了，能帮我找一下吗？" } },
+const ICON: Record<string, string> = {
+  person: "🙋", question: "❓", clock: "🕒", watch: "⌚", restroom: "🚻", point: "👉", map: "🗺️", food: "🍽️",
+  peanut: "🥜", no: "🚫", please: "🙏", taxi: "🚕", hotel: "🏨", phone: "📱", bag: "👜", search: "🔍", worried: "😟",
+  money: "💵", water: "💧", hospital: "🏥", pill: "💊", police: "👮", bus: "🚌", train: "🚆", plane: "✈️", ticket: "🎫",
+  house: "🏠", shop: "🏪", camera: "📷", help: "🆘", ok: "👌", sorry: "🙇", thanks: "😊", meet: "🤝", here: "📍",
+  calendar: "📅", car: "🚗", key: "🔑", card: "💳", wifi: "📶", baby: "👶", drink: "🥤", coffee: "☕", hot: "🔥",
+  cold: "🧊", number: "🔢",
+};
+const INTENT_KO: Record<string, string> = {
+  question: "질문", request: "요청", statement: "설명", prohibition: "금지", exclusion: "제외 요청",
+  proposal: "제안", greeting: "인사", other: "기타",
+};
+
+const SAMPLES = [
+  "지금 몇 시인가요?", "화장실은 어디인가요?", "이 음식에 땅콩을 넣지 말아 주세요.",
+  "이 호텔로 가고 싶어요.", "가방을 잃어버렸어요. 찾아주실 수 있나요?",
 ];
-
-const LANGS: { id: Lang; label: string }[] = [
-  { id: "en", label: "English" }, { id: "ja", label: "日本語" }, { id: "zh", label: "中文" }, { id: "none", label: "번역 없음" },
+const LANGS: { id: Lang; label: string; name: string }[] = [
+  { id: "en", label: "English", name: "English" }, { id: "ja", label: "日本語", name: "Japanese" },
+  { id: "zh", label: "中文", name: "Simplified Chinese" }, { id: "none", label: "번역 없음", name: "English" },
 ];
 const MODES: { id: Mode; label: string; desc: string }[] = [
   { id: "auto", label: "자동", desc: "내용에 맞는 방식을 추천해요" },
-  { id: "simple", label: "간단한 그림", desc: "핵심 의도를 그림으로" },
+  { id: "simple", label: "간단한 그림", desc: "문장별 핵심 의도를 그림으로" },
   { id: "comic", label: "4컷 상황", desc: "흐름을 순서대로" },
 ];
-
-interface Result { id: number; original: string; intent: string; mode: "simple" | "comic"; sample?: Sample; variant: number; note?: string }
-
 const MAX = 500;
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function Picture({ r, big }: { r: Result; big?: boolean }) {
-  const s = r.sample;
-  if (!s) return <div className={`flex items-center justify-center ${big ? "text-8xl" : "text-5xl"}`}>💬</div>;
+  const plan = r.item.visual_plan;
   if (r.mode === "comic") {
-    const panels = r.variant % 2 ? [...s.comic].reverse().reverse() : s.comic;
     return (
       <div className="grid grid-cols-2 gap-2">
-        {panels.map((p, i) => (
+        {plan.map((p, i) => (
           <div key={i} className="rounded-lg border-2 border-foreground bg-background p-2 flex flex-col items-center">
             <span className="self-start text-xs font-bold">{i + 1}</span>
-            <span className={big ? "text-6xl sm:text-7xl" : "text-4xl"}>{p.emoji}</span>
+            <span className={`${big ? "text-5xl sm:text-6xl" : "text-3xl"} flex flex-wrap justify-center gap-1`}>{p.icons.map((ic, j) => <span key={j}>{ICON[ic] ?? "❔"}</span>)}</span>
+            {p.label && <span className={`${big ? "text-2xl" : "text-base"} font-extrabold mt-1`}>{p.label}</span>}
             <span className={`${big ? "text-base" : "text-xs"} font-medium text-center mt-1`}>{p.caption}</span>
           </div>
         ))}
       </div>
     );
   }
-  const em = r.variant % 2 ? [...s.emoji].reverse() : s.emoji;
+  const icons = plan.flatMap((p) => p.icons);
+  const labels = plan.map((p) => p.label).filter(Boolean);
   return (
-    <div className={`flex items-center justify-center gap-3 flex-wrap rounded-lg border-2 border-foreground bg-background py-6 ${big ? "text-7xl sm:text-8xl" : "text-5xl"}`}>
-      {em.map((e, i) => <span key={i}>{e}</span>)}
+    <div className="rounded-lg border-2 border-foreground bg-background py-6 px-3 flex flex-col items-center gap-2">
+      <div className={`flex items-center justify-center gap-3 flex-wrap ${big ? "text-7xl sm:text-8xl" : "text-5xl"}`}>
+        {icons.map((e, i) => <span key={i}>{ICON[e] ?? "❔"}</span>)}
+      </div>
+      {labels.map((l, i) => <span key={i} className={`${big ? "text-3xl" : "text-xl"} font-extrabold`}>{l}</span>)}
     </div>
   );
 }
@@ -78,7 +78,7 @@ export default function Grimmal() {
   const [lang, setLang] = useState<Lang>("en");
   const [langOpen, setLangOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [pending, setPending] = useState<Sample | null>(null);
+  const [pending, setPending] = useState<{ analysis: Analysis; item: Item } | null>(null);
   const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState("");
   const [full, setFull] = useState<number | null>(null);
@@ -88,36 +88,43 @@ export default function Grimmal() {
 
   useEffect(() => { document.title = "그림말 — 한국어로 쓰고, 그림으로 보여주세요"; }, []);
 
-  const resolveMode = (s?: Sample): "simple" | "comic" =>
-    mode === "auto" ? (s && /잃어버|가고 싶/.test(s.key) ? "comic" : "simple") : mode;
-
-  const finish = async (s: Sample | undefined, original: string, note?: string) => {
+  const analyze = async (input: string, extra?: string) => {
+    if (busy) return;
+    setError(""); setPending(null); setPhase("analyzing");
+    const body = { text: extra ? `${input}\n[사용자 확인: ${extra}]` : input, lang: LANGS.find((l) => l.id === lang)!.name };
+    const { data, error: fnErr } = await supabase.functions.invoke("analyze-intent", { body });
+    if (fnErr || !data || data.error) {
+      let msg = data?.error as string | undefined;
+      let limit = false;
+      // deno-lint-ignore no-explicit-any
+      const ctx = (fnErr as any)?.context;
+      if (ctx?.json) { try { const j = await ctx.json(); msg = j.error; limit = !!j.limit || ctx.status === 402; } catch { /* ignore */ } }
+      setError(msg || "분석에 실패했어요. 다시 시도해 주세요.");
+      setPhase(limit ? "limit" : "error");
+      return;
+    }
+    const a = data as Analysis;
+    const unclear = a.items.find((i) => i.needs_clarification && i.clarification_question);
+    if (unclear && !extra) { setPending({ analysis: a, item: unclear }); setPhase("confirm"); return; }
     setPhase("drawing");
-    await wait(700);
-    setResults((prev) => [...prev, { id: Date.now(), original, intent: s ? s.intent : "샘플에 없는 문장이에요. 예문으로 흐름을 확인해 주세요.", mode: resolveMode(s), sample: s, variant: 0, note }]);
-    setPhase(s ? "done" : "error");
-    if (!s) setError("부분 실패: 샘플 단계에서는 예문 5개만 그림으로 보여줄 수 있어요.");
+    const fresh: Result[] = a.items.map((item, i) => ({
+      id: `${a.request_id}-${i}`, item, intent: item.interpreted_text,
+      mode: mode === "auto" ? item.recommended_mode : mode,
+    }));
+    setResults((p) => [...p, ...fresh]);
+    const warned = a.items.some((i) => i.warnings.length);
+    setPhase("done");
+    if (warned) setError("");
   };
 
-  const run = async () => {
-    const t = text.trim();
-    if (!t || busy) return;
-    setError("");
-    setPhase("analyzing");
-    await wait(700);
-    const s = SAMPLES.find((x) => x.key.replace(/\s/g, "") === t.replace(/\s/g, ""));
-    if (s?.ambiguous) { setPending(s); setPhase("confirm"); return; }
-    finish(s, text);
-  };
-
-  const confirm = (opt: string) => { if (pending) { finish(pending, text, opt); setPending(null); } };
-  const swap = (id: number) => setResults((p) => p.map((r) => (r.id === id ? { ...r, variant: r.variant + 1, mode: r.variant % 2 ? r.mode : r.mode === "simple" ? "comic" : "simple" } : r)));
-  const editIntent = (id: number) => {
+  const run = () => { const t = text.trim(); if (t) analyze(text); };
+  const swap = (id: string) => setResults((p) => p.map((r) => (r.id === id ? { ...r, mode: r.mode === "simple" ? "comic" : "simple" } : r)));
+  const editIntent = (id: string) => {
     const r = results.find((x) => x.id === id);
     const v = window.prompt("핵심 의미를 수정하세요", r?.intent);
     if (v?.trim()) setResults((p) => p.map((x) => (x.id === id ? { ...x, intent: v.trim() } : x)));
   };
-  const trOf = (r: Result) => (lang !== "none" && r.sample ? r.sample.tr[lang] : "");
+  const trOf = (r: Result) => (lang !== "none" ? r.item.translation : "");
   const langLabel = useMemo(() => LANGS.find((l) => l.id === lang)?.label, [lang]);
 
   if (full !== null && results[full]) {
@@ -132,13 +139,13 @@ export default function Grimmal() {
           <p className="text-2xl font-bold text-center">{r.intent}</p>
           <Picture r={r} big />
           {showTr && trOf(r) && <p className="text-2xl text-center font-semibold">{trOf(r)}</p>}
-          {showKo && <p className="text-lg text-center text-muted-foreground">{r.original}</p>}
+          {showKo && <p className="text-lg text-center text-muted-foreground">{r.item.original_text}</p>}
         </div>
         <div className="p-3 border-t-2 border-foreground flex items-center gap-2 flex-wrap justify-center">
-          <button disabled={full === 0} onClick={() => setFull(full - 1)} className="min-h-11 min-w-11 rounded-lg border-2 border-foreground disabled:opacity-30 flex items-center justify-center"><ChevronLeft /></button>
+          <button disabled={full === 0} onClick={() => setFull(full - 1)} aria-label="이전" className="min-h-11 min-w-11 rounded-lg border-2 border-foreground disabled:opacity-30 flex items-center justify-center"><ChevronLeft /></button>
           <button onClick={() => setShowTr(!showTr)} className="min-h-11 px-3 rounded-lg border-2 border-foreground text-sm font-medium">번역 {showTr ? "숨기기" : "보기"}</button>
           <button onClick={() => setShowKo(!showKo)} className="min-h-11 px-3 rounded-lg border-2 border-foreground text-sm font-medium">한국어 {showKo ? "숨기기" : "보기"}</button>
-          <button disabled={full === results.length - 1} onClick={() => setFull(full + 1)} className="min-h-11 min-w-11 rounded-lg border-2 border-foreground disabled:opacity-30 flex items-center justify-center"><ChevronRight /></button>
+          <button disabled={full === results.length - 1} onClick={() => setFull(full + 1)} aria-label="다음" className="min-h-11 min-w-11 rounded-lg border-2 border-foreground disabled:opacity-30 flex items-center justify-center"><ChevronRight /></button>
         </div>
       </div>
     );
@@ -164,13 +171,9 @@ export default function Grimmal() {
           </div>
         </header>
 
-        <div className="rounded-lg bg-badge-draft text-badge-draft-foreground border border-current px-3 py-2 text-xs font-medium">
-          샘플 결과 화면입니다. 실제 AI가 만든 결과가 아닙니다.
-        </div>
-
         <section className="space-y-2">
           <div className="relative">
-            <textarea value={text} maxLength={MAX} onChange={(e) => { setText(e.target.value); if (phase === "idle" || phase === "done" || phase === "error") setPhase("idle"); }}
+            <textarea value={text} maxLength={MAX} onChange={(e) => setText(e.target.value)}
               placeholder={"전달하고 싶은 내용을 한국어로 적어주세요.\n예: 지금 몇 시인가요?"} rows={4}
               className="w-full rounded-lg border-2 border-foreground bg-card p-3 pr-12 text-base resize-none focus:outline-none focus:ring-2 focus:ring-ring" />
             {text && <button onClick={() => setText("")} aria-label="지우기" className="absolute top-1 right-1 min-h-11 min-w-11 flex items-center justify-center text-muted-foreground"><X size={20} /></button>}
@@ -197,25 +200,26 @@ export default function Grimmal() {
           <p className="text-sm font-semibold">예문</p>
           <div className="flex flex-wrap gap-2">
             {SAMPLES.map((s) => (
-              <button key={s.key} onClick={() => setText(s.key)} className="min-h-11 px-3 rounded-full border-2 border-border bg-card text-sm text-left">{s.key}</button>
+              <button key={s} onClick={() => setText(s)} className="min-h-11 px-3 rounded-full border-2 border-border bg-card text-sm text-left">{s}</button>
             ))}
           </div>
         </section>
 
-        {phase === "confirm" && pending?.ambiguous && (
+        {phase === "confirm" && pending && (
           <div className="rounded-lg border-2 border-foreground bg-card p-4 space-y-3">
             <p className="font-bold">의미 확인이 필요해요</p>
-            <p className="text-sm">{pending.ambiguous.question}</p>
+            <p className="text-sm">{pending.item.clarification_question}</p>
             <div className="flex flex-col gap-2">
-              {pending.ambiguous.options.map((o) => (
-                <button key={o} onClick={() => confirm(o)} className="min-h-11 rounded-lg border-2 border-foreground font-medium">{o}</button>
+              {pending.item.clarification_options.map((o) => (
+                <button key={o} onClick={() => analyze(text, `${pending.item.clarification_question} → ${o}`)} className="min-h-11 rounded-lg border-2 border-foreground font-medium">{o}</button>
               ))}
+              <button onClick={() => analyze(text, "확인 없이 원문 그대로 표현")} className="min-h-11 rounded-lg border-2 border-border text-sm">확인 없이 진행</button>
             </div>
           </div>
         )}
 
         {error && (
-          <div className="rounded-lg border-2 border-destructive text-destructive p-3 text-sm flex gap-2"><AlertCircle size={18} className="shrink-0" />{error}</div>
+          <div className="rounded-lg border-2 border-destructive text-destructive p-3 text-sm flex gap-2"><AlertCircle size={18} className="shrink-0" />{phase === "limit" ? `이용 한도 초과: ${error}` : error}</div>
         )}
 
         {results.length > 0 && (
@@ -226,19 +230,29 @@ export default function Grimmal() {
             </div>
             {[...results].reverse().map((r) => {
               const idx = results.indexOf(r);
+              const it = r.item;
+              const corrected = it.interpreted_text.trim() !== it.original_text.trim();
               return (
                 <article key={r.id} className="rounded-lg border-2 border-foreground bg-card p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-badge-draft text-badge-draft-foreground">샘플 결과</span>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex gap-1 flex-wrap">
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-secondary">{INTENT_KO[it.intent_type] ?? "기타"}</span>
+                      {it.negation && <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-destructive text-destructive-foreground">부정·제외</span>}
+                      {it.time_expression && <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-secondary">🕒 {it.time_expression}</span>}
+                    </div>
                     <span className="text-xs text-muted-foreground">{r.mode === "comic" ? "4컷" : "간단한 그림"}</span>
                   </div>
-                  <p className="text-sm text-muted-foreground break-words">원문: {r.original}</p>
-                  <p className="text-lg font-bold">{r.intent}{r.note && <span className="block text-sm font-medium text-muted-foreground">({r.note})</span>}</p>
+                  <p className="text-sm text-muted-foreground break-words">원문: {it.original_text}</p>
+                  <div>
+                    {corrected && <p className="text-xs text-muted-foreground">이렇게 이해했어요</p>}
+                    <p className="text-lg font-bold break-words">{r.intent}</p>
+                  </div>
                   <Picture r={r} />
                   {trOf(r) && <p className="text-base font-medium">{trOf(r)}</p>}
+                  {it.warnings.map((w, i) => <p key={i} className="text-xs text-muted-foreground">⚠️ {w}</p>)}
                   <div className="grid grid-cols-3 gap-2">
                     <button onClick={() => editIntent(r.id)} className="min-h-11 rounded-lg border-2 border-border text-xs font-semibold flex flex-col items-center justify-center"><Pencil size={16} />의도 수정</button>
-                    <button onClick={() => swap(r.id)} disabled={!r.sample} className="min-h-11 rounded-lg border-2 border-border text-xs font-semibold flex flex-col items-center justify-center disabled:opacity-40"><RefreshCw size={16} />그림 바꾸기</button>
+                    <button onClick={() => swap(r.id)} className="min-h-11 rounded-lg border-2 border-border text-xs font-semibold flex flex-col items-center justify-center"><RefreshCw size={16} />그림 바꾸기</button>
                     <button onClick={() => setFull(idx)} className="min-h-11 rounded-lg bg-primary text-primary-foreground text-xs font-semibold flex flex-col items-center justify-center"><Maximize2 size={16} />크게 보여주기</button>
                   </div>
                 </article>
