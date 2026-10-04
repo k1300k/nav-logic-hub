@@ -101,10 +101,14 @@ function validate(data: any, original: string): string | null {
     if (!Array.isArray(it.visual_plan) || !it.visual_plan.length) return "그림 구성 누락";
     let unsupported = false;
     for (const p of it.visual_plan) {
-      p.icons = (Array.isArray(p.icons) ? p.icons : []).filter((i: string) => { const ok = ICONS.includes(i); if (!ok) unsupported = true; return ok; });
-      if (!p.icons.length) p.icons = ["question"];
+      p.icons = (Array.isArray(p.icons) ? p.icons : []).filter((i: string) => { const ok = ICONS.includes(i); if (!ok) unsupported = true; return ok; }).slice(0, 3);
+      p.excluded = (Array.isArray(p.excluded) ? p.excluded : []).filter((i: string) => p.icons.includes(i));
+      p.arrow = p.arrow === true;
+      p.label = typeof p.label === "string" ? p.label : "";
+      p.caption = typeof p.caption === "string" ? p.caption : "";
     }
-    if (unsupported) it.warnings.push("지원하지 않는 아이콘이 있어 대체했어요.");
+    if (unsupported) it.warnings.push("준비되지 않은 그림은 뺐어요.");
+    if (it.visual_plan.every((p: { icons: string[] }) => !p.icons.length)) it.warnings.push("알맞은 그림이 없어 번역문 중심으로 보여드려요. 4컷 방식도 시도해 보세요.");
     if (NEG.test(it.original_text) && !it.negation) { it.negation = true; it.warnings.push("원문의 부정 표현을 보존했어요."); }
   }
   const outNums = data.items.flatMap((it: { original_text: string }) => it.original_text.match(NUM) ?? []).sort().join(",");
