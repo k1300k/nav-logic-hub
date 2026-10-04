@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Maximize2, Pencil, RefreshCw, ChevronLeft, ChevronRight, Languages, Loader2, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Scene, type Panel } from "@/components/grimmal/Scene";
+import { findTemplate } from "@/lib/grimmalTemplates";
+import { PICTO_LICENSE } from "@/lib/pictograms";
 
 type Mode = "auto" | "simple" | "comic";
 type Lang = "en" | "ja" | "zh" | "none";
 type Phase = "idle" | "analyzing" | "confirm" | "drawing" | "done" | "error" | "limit";
 
-interface Panel { icons: string[]; label: string; caption: string }
 interface Item {
   source_sentence_ids: string[]; original_text: string; interpreted_text: string; intent_type: string;
   negation: boolean; time_expression: string; quantity: string; location_expression: string;
@@ -14,16 +16,8 @@ interface Item {
   recommended_mode: "simple" | "comic"; visual_plan: Panel[]; translation: string; warnings: string[];
 }
 interface Analysis { request_id: string; original_text: string; sentences: { id: string; text: string }[]; items: Item[] }
-interface Result { id: string; item: Item; mode: "simple" | "comic"; intent: string }
+interface Result { id: string; item: Item; mode: "simple" | "comic"; intent: string; fromTemplate?: boolean }
 
-const ICON: Record<string, string> = {
-  person: "🙋", question: "❓", clock: "🕒", watch: "⌚", restroom: "🚻", point: "👉", map: "🗺️", food: "🍽️",
-  peanut: "🥜", no: "🚫", please: "🙏", taxi: "🚕", hotel: "🏨", phone: "📱", bag: "👜", search: "🔍", worried: "😟",
-  money: "💵", water: "💧", hospital: "🏥", pill: "💊", police: "👮", bus: "🚌", train: "🚆", plane: "✈️", ticket: "🎫",
-  house: "🏠", shop: "🏪", camera: "📷", help: "🆘", ok: "👌", sorry: "🙇", thanks: "😊", meet: "🤝", here: "📍",
-  calendar: "📅", car: "🚗", key: "🔑", card: "💳", wifi: "📶", baby: "👶", drink: "🥤", coffee: "☕", hot: "🔥",
-  cold: "🧊", number: "🔢",
-};
 const INTENT_KO: Record<string, string> = {
   question: "질문", request: "요청", statement: "설명", prohibition: "금지", exclusion: "제외 요청",
   proposal: "제안", greeting: "인사", other: "기타",
@@ -46,28 +40,21 @@ const MAX = 500;
 
 function Picture({ r, big }: { r: Result; big?: boolean }) {
   const plan = r.item.visual_plan;
-  if (r.mode === "comic") {
+  if (r.mode === "comic" && plan.length > 1) {
     return (
-      <div className="grid grid-cols-2 gap-2">
+      <div className={`grid gap-2 ${big ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2"}`}>
         {plan.map((p, i) => (
-          <div key={i} className="rounded-lg border-2 border-foreground bg-background p-2 flex flex-col items-center">
-            <span className="self-start text-xs font-bold">{i + 1}</span>
-            <span className={`${big ? "text-5xl sm:text-6xl" : "text-3xl"} flex flex-wrap justify-center gap-1`}>{p.icons.map((ic, j) => <span key={j}>{ICON[ic] ?? "❔"}</span>)}</span>
-            {p.label && <span className={`${big ? "text-2xl" : "text-base"} font-extrabold mt-1`}>{p.label}</span>}
-            <span className={`${big ? "text-base" : "text-xs"} font-medium text-center mt-1`}>{p.caption}</span>
+          <div key={i} className="rounded-lg border-2 border-foreground bg-background p-2">
+            <span className="text-xs font-bold">{i + 1}</span>
+            <Scene panel={p} intent={r.item.intent_type} />
           </div>
         ))}
       </div>
     );
   }
-  const icons = plan.flatMap((p) => p.icons);
-  const labels = plan.map((p) => p.label).filter(Boolean);
   return (
-    <div className="rounded-lg border-2 border-foreground bg-background py-6 px-3 flex flex-col items-center gap-2">
-      <div className={`flex items-center justify-center gap-3 flex-wrap ${big ? "text-7xl sm:text-8xl" : "text-5xl"}`}>
-        {icons.map((e, i) => <span key={i}>{ICON[e] ?? "❔"}</span>)}
-      </div>
-      {labels.map((l, i) => <span key={i} className={`${big ? "text-3xl" : "text-xl"} font-extrabold`}>{l}</span>)}
+    <div className="rounded-lg border-2 border-foreground bg-background py-5 px-3 space-y-4">
+      {plan.map((p, i) => <Scene key={i} panel={p} intent={r.item.intent_type} big={big} />)}
     </div>
   );
 }
@@ -91,7 +78,18 @@ export default function Grimmal() {
   const analyze = async (input: string, extra?: string) => {
     if (busy) return;
     setError(""); setPending(null); setPhase("analyzing");
-    const body = { text: extra ? `${input}\n[사용자 확인: ${extra}]` : input, lang: LANGS.find((l) => l.id === lang)!.name };
+    const langName = LANGS.find((l) => l.id === lang)!.name as "English" | "Japanese" | "Simplified Chinese";
+    const tpl = !extra ? findTemplate(input) : undefined;
+    if (tpl) {
+      const item: Item = {
+        ...tpl, source_sentence_ids: ["s1"], quantity: "", location_expression: "", needs_clarification: false,
+        clarification_question: "", clarification_options: [], translation: tpl.translation[langName], warnings: [],
+      };
+      setResults((p) => [...p, { id: `tpl-${Date.now()}`, item, intent: item.interpreted_text, mode: mode === "comic" ? "comic" : "simple", fromTemplate: true }]);
+      setPhase("done");
+      return;
+    }
+    const body = { text: extra ? `${input}\n[사용자 확인: ${extra}]` : input, lang: langName };
     const { data, error: fnErr } = await supabase.functions.invoke("analyze-intent", { body });
     if (fnErr || !data || data.error) {
       let msg = data?.error as string | undefined;
