@@ -6,11 +6,12 @@ const cors = {
 const MODEL = "openai/gpt-6-astra";
 const GATEWAY = "https://ai.gateway.lovable.dev/v1/responses";
 
-export const ICONS = [
-  "person", "question", "clock", "watch", "restroom", "point", "map", "food", "peanut", "no", "please",
-  "taxi", "hotel", "phone", "bag", "search", "worried", "money", "water", "hospital", "pill", "police",
-  "bus", "train", "plane", "ticket", "house", "shop", "camera", "help", "ok", "sorry", "thanks",
-  "meet", "here", "calendar", "car", "key", "card", "wifi", "baby", "drink", "coffee", "hot", "cold", "number",
+// Must match src/lib/pictograms.tsx PICTOGRAMS ids.
+const ICONS = [
+  "clock", "calendar", "restroom", "hotel", "hospital", "airport", "station", "walk", "bus", "taxi", "train",
+  "food", "water", "peanut", "milk", "egg", "coffee", "bag", "luggage", "phone", "wallet", "ticket", "card",
+  "money", "search", "wait", "pill", "police", "house", "shop", "camera", "key", "wifi", "baby", "meet",
+  "hot", "cold", "place", "other", "me",
 ];
 
 const INTENTS = ["question", "request", "statement", "prohibition", "exclusion", "proposal", "greeting", "other"];
@@ -24,12 +25,15 @@ const SYSTEM = `당신은 한국어 문장을 그림 의사소통용 구조화�
 - 숫자와 시간은 원문 그대로(오후 3시는 "오후 3시"). 숫자 라벨은 visual_plan의 label에 정확히 표기.
 - 명확한 오타는 interpreted_text에서 보정하되 original_text는 그대로. 의미가 둘 이상이면 추측하지 말고 확인.
 - '이거' 등 지시 대상이 그림 전달에 꼭 필요한데 불명확할 때만 needs_clarification=true, 질문은 하나, 선택지 2~4개.
-- visual_plan 각 칸의 icons는 다음 ID만 사용: ${ICONS.join(", ")}. caption은 짧은 한국어.
+- visual_plan 각 칸: icons는 핵심 대상 1~3개, 다음 ID만 사용: ${ICONS.join(", ")}. 질문 표시·사람·화살표는 아이콘으로 넣지 말 것(자동 배치).
+  excluded: 제외·금지 대상 아이콘 ID(icons의 부분집합, 예: 땅콩 빼기 → icons ["food","peanut"], excluded ["peanut"]. 음식 전체를 거절하지 말 것).
+  arrow: '나'가 어떤 곳으로 가고 싶다는 이동 의도일 때만 true. 길 안내·방향 표시는 하지 말 것.
+  의미가 비슷하다는 이유로 맞지 않는 아이콘을 쓰지 말 것. 알맞은 아이콘이 없으면 icons를 빈 배열로 두고 warnings에 이유를 적을 것.
 - recommended_mode: 단일 의도면 "simple", 사건·요청 흐름이면 "comic"(4칸).
 - translation: 대상 언어로 짧은 번역(없으면 빈 문자열).
 출력 JSON 형식:
 {"sentences":[{"id":"s1","text":"..."}],
- "items":[{"source_sentence_ids":["s1"],"original_text":"","interpreted_text":"","intent_type":"${INTENTS.join("|")}","subject":"","action":"","object":"","negation":false,"quantity":"","time_expression":"","location_expression":"","relationships":"","needs_clarification":false,"clarification_question":"","clarification_options":[],"recommended_mode":"simple|comic","visual_plan":[{"icons":["person"],"label":"","caption":""}],"translation":"","warnings":[]}]}`;
+ "items":[{"source_sentence_ids":["s1"],"original_text":"","interpreted_text":"","intent_type":"${INTENTS.join("|")}","subject":"","action":"","object":"","negation":false,"quantity":"","time_expression":"","location_expression":"","relationships":"","needs_clarification":false,"clarification_question":"","clarification_options":[],"recommended_mode":"simple|comic","visual_plan":[{"icons":["food"],"excluded":[],"arrow":false,"label":"","caption":""}],"translation":"","warnings":[]}]}`;
 
 async function callModel(text: string, lang: string, apiKey: string, signal: AbortSignal) {
   const res = await fetch(GATEWAY, {
